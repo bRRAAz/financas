@@ -112,7 +112,7 @@ export function Settings() {
   return <>
     <Heading title="Configurações" description="Gerencie suas contas, categorias e preferências." />
     <div className="dashboard-secondary">
-      <Card title={demo ? 'Modo demonstração' : 'Conta Google'} description={demo ? 'Dados fictícios salvos neste navegador.' : user?.email ?? ''}>
+      <Card title={demo ? 'Modo demonstração' : 'Minha conta'} description={demo ? 'Dados fictícios salvos neste navegador.' : user?.email ?? ''}>
         <Button variant="secondary" onClick={() => { void signOut().catch(() => notice('Não foi possível sair. Tente novamente.', true)) }}><LogOut size={16} />{demo ? 'Sair da demonstração' : 'Sair do sistema'}</Button>
       </Card>
       <Card title="Aparência" description="Escolha o tema da aplicação.">

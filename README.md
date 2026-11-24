@@ -36,10 +36,9 @@ Use `.env.example` como referência para preencher `.env.local`. O ambiente est�
 | --- | --- |
 | `VITE_SUPABASE_URL` | URL do projeto Supabase |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Chave **Publishable** (prefixo `sb_publishable_`) |
-| `VITE_APP_URL` | Origem da aplicação, como `http://localhost:5173` |
 | `VITE_APP_NAME` | Nome de exibição, como `Meu Financeiro` |
 
-A URL e a chave publicável estão disponíveis em **Settings → API Keys** ou no diálogo **Connect** do Supabase. As variáveis com prefixo `VITE_` são públicas no navegador. Guarde o Client Secret do Google somente nas configurações do provedor Google do Supabase. Reserve as chaves administrativas para operações fora do frontend.
+A URL e a chave publicável estão disponíveis em **Settings → API Keys** ou no diálogo **Connect** do Supabase. As variáveis com prefixo `VITE_` são públicas no navegador. Reserve as chaves administrativas para operações fora do frontend.
 
 ## Banco de dados no Supabase
 
@@ -55,30 +54,21 @@ supabase db push --dry-run
 supabase db push
 ```
 
-As tabelas financeiras usam IDs UUID, chaves estrangeiras que incluem o proprietário, índices por usuário e período, timestamps e RLS. Sessões anônimas ficam sem acesso. Sessões autenticadas leem e alteram somente registros próprios e precisam ter entrado por OAuth com a identidade Google vinculada. As categorias iniciais são cadastradas na primeira sessão autorizada.
+As tabelas financeiras usam IDs UUID, chaves estrangeiras que incluem o proprietário, índices por usuário e período, timestamps e RLS. Sessões iniciadas com e-mail e senha leem e alteram somente registros próprios. As categorias iniciais são cadastradas na primeira sessão autorizada.
 
-## Google OAuth
+## Login por e-mail e senha
 
-1. No Google Cloud, configure o **Google Auth Platform** com Branding, Audience e Data Access. Se usar **Testing**, adicione os dois e-mails que usará no teste de aceitação como test users do Google. Na validação do Supabase, apenas um deles deve estar cadastrado no Supabase Auth.
-2. Em **Clients**, crie um cliente OAuth do tipo **Web application**. Cadastre como **Authorized redirect URI** a URL de callback exibida pelo Supabase no painel do provedor Google, no formato `https://SEU_PROJECT_REF.supabase.co/auth/v1/callback`.
-3. No Supabase, acesse **Authentication → Sign In / Providers**. Desligue **Allow new users to sign up**, **Allow anonymous sign-ins** e **Allow manual linking**. Desabilite Email, Phone e quaisquer outros provedores. Habilite **Google**, informe Client ID e Client Secret e mantenha a verificação de nonce e de e-mail do provedor.
-4. Em **Authentication → URL Configuration**, informe a origem principal em **Site URL**. Em **Redirect URLs**, inclua `http://localhost:5173/auth/callback` para desenvolvimento e `https://SEU-DOMINIO/auth/callback` para publicação. Abra o aplicativo na mesma origem de `VITE_APP_URL` para manter o verificador PKCE disponível no retorno.
+1. Em **Authentication → Sign In / Providers**, deixe **Email** habilitado e desative **Allow new users to sign up**, **Allow anonymous sign-ins** e os demais provedores.
+2. Em **Authentication → Users → Add user → Create new user**, cadastre o e-mail e defina uma senha exclusiva. Marque **Auto Confirm User** apenas para endereços cuja titularidade foi verificada. Para uma conta já existente, mantenha o mesmo usuário para preservar o UUID e os dados associados.
+3. Acesse o aplicativo com a conta criada. As políticas do banco verificam se a sessão foi iniciada por senha e restringem o acesso aos registros do próprio usuário.
 
-[Configurar Google no Supabase](https://supabase.com/docs/guides/auth/social-sign-in/auth-google) · [Configurações de autenticação](https://supabase.com/docs/guides/auth/general-configuration) · [URLs de redirecionamento](https://supabase.com/docs/guides/auth/redirect-urls)
+[Login por senha no Supabase](https://supabase.com/docs/guides/auth/passwords) · [Criação administrativa de usuários](https://supabase.com/docs/reference/javascript/auth-admin-createuser)
 
-### Autorizar uma conta Google
+### Validação do acesso
 
-1. Confirme por um canal confiável o e-mail completo da conta Google que deseja autorizar, incluindo domínio e eventuais aliases. Use o e-mail retornado pelo Google.
-2. Em **Authentication → Users → Add user → Create new user**, crie o usuário com esse e-mail e marque **Auto Confirm User** após verificar sua titularidade. Se o painel exigir senha, gere uma senha aleatória forte exclusiva para esse cadastro e mantenha o provedor Email desabilitado. É possível também usar `auth.admin.createUser({ email, email_confirm: true })` a partir de um ambiente administrativo local confiável.
-3. Peça que o usuário abra o aplicativo e clique em **Entrar com Google**. O Supabase vincula automaticamente a identidade Google de e-mail verificado ao usuário existente. Confira no painel se o mesmo UUID ganhou a identidade `google`. Mantenha a vinculação manual desabilitada e use o fluxo normal de OAuth para comprovar a identidade.
-
-[Vinculação de identidades](https://supabase.com/docs/guides/auth/auth-identity-linking) · [Criação administrativa de usuários](https://supabase.com/docs/reference/javascript/auth-admin-createuser)
-
-### Aceitação de autenticação
-
-- Entre com a conta previamente criada. Confirme a identidade Google associada, cadastre um lançamento e recarregue a página. O lançamento e a sessão devem permanecer. Feche e reabra a mesma origem no mesmo perfil do navegador para verificar a persistência da sessão.
-- Em janela anônima, tente entrar com outro e-mail Google que ainda não exista em **Authentication → Users**. A aplicação deve informar **Sua conta não possui autorização para acessar este sistema**. Confirme que o e-mail continua ausente da lista de usuários. Se o Google estiver em **Testing**, ambas as contas precisam estar nos test users do Google para que a segunda chegue ao Supabase.
-- Sem sessão, abra uma rota interna como `/calendario`. A tela de login deve aparecer. Execute os testes locais para verificar o isolamento de dados entre proprietários e a rejeição de acesso anônimo no PostgreSQL.
+- Entre com a conta criada no painel e recarregue a página para verificar a sessão. Confira se os lançamentos da conta estão disponíveis.
+- Em janela anônima, abra uma rota interna como `/calendario` e confira se a tela de login aparece. Uma tentativa com credenciais inválidas deve receber uma mensagem genérica.
+- Os testes locais verificam o isolamento entre proprietários, a preservação dos dados na migração e a rejeição de sessões anônimas ou sem senha de e-mail.
 
 ## Regras da projeção
 
@@ -105,7 +95,7 @@ Os testes financeiros cobrem saldo diário, saldo negativo, passagem de saldo en
 
 1. Envie os arquivos do projeto para um repositório Git, incluindo o `.env.example` e o `package-lock.json`. Use um projeto pessoal no plano Hobby da Vercel.
 2. Importe o repositório e escolha o preset **Vite**. Use `npm run build` como comando e `dist` como diretório de saída. O `vercel.json` já redireciona rotas internas para a aplicação.
-3. Defina as quatro variáveis públicas no projeto da Vercel. Use o domínio publicado em `VITE_APP_URL`. Cadastre o callback do domínio em **Redirect URLs** no Supabase e publique novamente após alterar as variáveis.
+3. Defina as variáveis públicas do `.env.example` no projeto da Vercel e publique novamente após alterá-las.
 4. Repita os testes de autenticação no domínio publicado.
 
-[Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite) · [Redirecionamentos do Supabase Auth](https://supabase.com/docs/guides/auth/redirect-urls)
+[Vite na Vercel](https://vercel.com/docs/frameworks/frontend/vite)

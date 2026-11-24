@@ -1,14 +1,14 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState, type FormEvent } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { CalendarDays, ChartNoAxesCombined, CircleAlert, CreditCard, LayoutDashboard, List, LoaderCircle, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Repeat2, Settings2, X } from 'lucide-react'
 import { Brand } from './components/Brand'
-import { Button, Modal, cn } from './components/ui'
+import { Button, Field, Modal, cn } from './components/ui'
 import { FinanceContext, type EntryDialogState } from './lib/context'
 import { monthOf, today } from './lib/dates'
 import { demoRepository, remoteRepository } from './lib/repository'
-import { appName, appUrl, callbackError, googleSetupIssue, isGoogleSession, supabase } from './lib/supabase'
+import { appName, isPasswordSession, passwordSetupIssue, supabase } from './lib/supabase'
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })))
 const Calendar = lazy(() => import('./pages/Calendar').then(module => ({ default: module.Calendar })))
@@ -39,36 +39,28 @@ function Loading({ label }: { label: string }) {
   return <div className="screen-feedback" role="status"><LoaderCircle className="spinner" size={25} /><p>{label}</p></div>
 }
 
-function GoogleIcon() {
-  return <svg aria-hidden="true" width="19" height="19" viewBox="0 0 48 48">
-    <path fill="#4285F4" d="M43.6 24.4c0-1.4-.1-2.8-.4-4.1H24v7.8h11c-.5 2.5-1.9 4.6-4 6v5.2h6.7c3.8-3.5 5.9-8.6 5.9-14.9Z" />
-    <path fill="#34A853" d="M24 44c5.5 0 10.2-1.8 13.7-4.7L31 34.1c-1.8 1.2-4.2 1.9-7 1.9-5.3 0-9.8-3.6-11.4-8.4H5.7V33A20 20 0 0 0 24 44Z" />
-    <path fill="#FBBC05" d="M12.6 27.6a12 12 0 0 1 0-7.2V15H5.7a20 20 0 0 0 0 18l6.9-5.4Z" />
-    <path fill="#EA4335" d="M24 12c3 0 5.7 1 7.8 3l5.9-5.9C34.2 5.9 29.5 4 24 4A20 20 0 0 0 5.7 15l6.9 5.4C14.2 15.6 18.7 12 24 12Z" />
-  </svg>
-}
-
 function Login({ unauthorized }: { unauthorized: boolean }) {
   const [busy, setBusy] = useState(false)
-  const [failure, setFailure] = useState(callbackError && !unauthorized
-    ? 'Não foi possível concluir o login com Google. Tente novamente.' : '')
-  async function login() {
-    if (!supabase) return
+  const [failure, setFailure] = useState('')
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase || busy) return
+    const form = new FormData(event.currentTarget)
+    const email = String(form.get('email') ?? '').trim()
+    const password = String(form.get('password') ?? '')
     setFailure('')
     setBusy(true)
     try {
-      const setupIssue = await googleSetupIssue()
+      const setupIssue = await passwordSetupIssue()
       if (setupIssue) { setFailure(setupIssue); return }
-      if (new URL(appUrl).origin !== window.location.origin) {
-        window.location.assign(appUrl)
-        return
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error?.code === 'invalid_credentials' || error?.code === 'email_not_confirmed') {
+        setFailure('Não foi possível entrar. Confira o e-mail e a senha da conta autorizada.')
+      } else if (error) {
+        setFailure('Não foi possível entrar agora. Tente novamente mais tarde.')
       }
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google', options: { redirectTo: appUrl + '/auth/callback', queryParams: { prompt: 'select_account' } },
-      })
-      if (error) setFailure('Não foi possível iniciar o login com Google. Tente novamente.')
     } catch {
-      setFailure('Não foi possível iniciar o login com Google. Tente novamente.')
+      setFailure('Não foi possível conectar ao Supabase. Tente novamente.')
     } finally {
       setBusy(false)
     }
@@ -79,9 +71,11 @@ function Login({ unauthorized }: { unauthorized: boolean }) {
       <h1>Entrar no {appName}</h1>
       {(unauthorized || failure) && <p className="login-error" role="alert">{failure || denied}</p>}
       {!supabase && <p className="setup-message">Configuração pendente. Preencha a URL e a chave publicável do Supabase no ambiente da aplicação.</p>}
-      <Button variant="secondary" className="google-login" disabled={busy || !supabase} onClick={() => { void login() }}>
-        <GoogleIcon /> {busy ? 'Conectando…' : 'Entrar com Google'}
-      </Button>
+      <form className="login-form" onSubmit={login}>
+        <Field label="E-mail"><input type="email" name="email" autoComplete="username" required disabled={!supabase} /></Field>
+        <Field label="Senha"><input type="password" name="password" autoComplete="current-password" required disabled={!supabase} /></Field>
+        <Button type="submit" disabled={busy || !supabase}>{busy ? 'Entrando…' : 'Entrar'}</Button>
+      </form>
       {import.meta.env.DEV && <Button variant="ghost" asChild><NavLink to="/demo">Abrir demonstração local</NavLink></Button>}
     </div>
   </main>
@@ -207,26 +201,20 @@ function Workspace({ user, demo }: { user: User | null; demo: boolean }) {
 
 export function App() {
   const [session, setSession] = useState<Session | null | undefined>(supabase ? undefined : null)
-  const [blockedSession, setBlockedSession] = useState(false)
   useEffect(() => {
-    if (!supabase) return
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, next) => {
-      setSession(next)
-      if (next && !isGoogleSession(next)) setBlockedSession(true)
-      if (event === 'SIGNED_IN' && isGoogleSession(next)) setBlockedSession(false)
-    })
     document.title = appName
+    if (!supabase) return
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next)
+    })
     return () => subscription.unsubscribe()
   }, [])
-  const google = isGoogleSession(session ?? null)
-  const oauthDenied = !!callbackError && /signup_disabled|user_banned|user_not_found|signups? (not allowed|disabled)/i.test(callbackError)
-  const auth = session === undefined ? <Loading label="Verificando sessão…" /> : google && session
+  const auth = session === undefined ? <Loading label="Verificando sessão…" /> : session && isPasswordSession(session)
     ? <Workspace key={session.user.id} demo={false} user={session.user} />
-    : <Login unauthorized={blockedSession || oauthDenied} />
+    : <Login unauthorized={!!session} />
 
   return <Routes>
     {import.meta.env.DEV && <Route path="/demo/*" element={<Workspace key="demo" demo user={null} />} />}
-    <Route path="/auth/callback" element={session === undefined ? <Loading label="Concluindo acesso…" /> : <Navigate to="/" replace />} />
     <Route path="/*" element={auth} />
   </Routes>
 }

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -6,10 +6,10 @@ const owner = '10000000-0000-4000-a000-000000000001'
 const other = '10000000-0000-4000-a000-000000000002'
 const database = new PGlite()
 
-async function authenticate(user: string, method = 'oauth', anonymous = false) {
+async function authenticate(user: string, method = 'password', anonymous = false, providers = ['email']) {
   await database.exec('reset role')
   await database.query('select set_config($1, $2, false)', ['request.jwt.claims', JSON.stringify({
-    sub: user, app_metadata: { providers: ['email', 'google'] }, amr: [{ method }], is_anonymous: anonymous,
+    sub: user, email: 'teste@example.test', app_metadata: { providers }, amr: [{ method }], is_anonymous: anonymous,
   })])
   await database.exec('set role authenticated')
 }
@@ -26,9 +26,18 @@ beforeAll(async () => {
     grant usage on schema auth to anon, authenticated;
     insert into auth.users values ('${owner}'), ('${other}');
   `)
-  await database.exec(await readFile('supabase/setup.sql', 'utf8'))
-  await authenticate(owner)
+  const directory = 'supabase/migrations'
+  const files = (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()
+  const passwordMigration = files.find(file => file.endsWith('_finance_password_auth.sql'))!
+  for (const file of files.filter(file => file < passwordMigration)) {
+    await database.exec(await readFile(directory + '/' + file, 'utf8'))
+  }
+  await authenticate(owner, 'oauth', false, ['email', 'google'])
   await database.exec("select public.initialize_finance(); insert into public.accounts(name,opening_balance,opening_date) values ('Owner', 50000, '2026-01-01')")
+  await database.exec('reset role')
+  for (const file of files.filter(file => file >= passwordMigration)) {
+    await database.exec(await readFile(directory + '/' + file, 'utf8'))
+  }
 }, 15000)
 afterAll(async () => { await database.close() })
 
@@ -37,6 +46,7 @@ describe('Segurança e integridade no PostgreSQL', () => {
     await authenticate(owner)
     await database.exec('select public.initialize_finance()')
     expect((await database.query('select name from public.categories')).rows).toHaveLength(15)
+    expect((await database.query('select name from public.accounts')).rows).toEqual([{ name: 'Owner' }])
     await authenticate(other)
     expect((await database.query('select * from public.categories')).rows).toHaveLength(0)
     expect((await database.query('select * from public.accounts')).rows).toHaveLength(0)
@@ -45,13 +55,19 @@ describe('Segurança e integridade no PostgreSQL', () => {
       .rejects.toMatchObject({ code: '42501' })
   })
 
-  it('bloqueia visitante, sessão anônima e login por senha, inclusive com uma identidade Google vinculada', async () => {
+  it('bloqueia visitante, sessão anônima e sessões sem senha de e-mail', async () => {
     await database.exec('reset role; set role anon')
     await expect(database.query('select * from public.accounts')).rejects.toMatchObject({ code: '42501' })
-    await authenticate(owner, 'password')
-    expect((await database.query('select * from public.accounts')).rows).toHaveLength(0)
-    await authenticate(owner, 'oauth', true)
-    expect((await database.query('select * from public.accounts')).rows).toHaveLength(0)
+    const blocked = [
+      ['oauth', false, ['email', 'google']],
+      ['otp', false, ['email']],
+      ['password', true, ['email']],
+      ['password', false, ['phone']],
+    ] as const
+    for (const [method, anonymous, providers] of blocked) {
+      await authenticate(owner, method, anonymous, [...providers])
+      expect((await database.query('select * from public.accounts')).rows).toHaveLength(0)
+    }
   })
 
   it('rejeita vínculo de lançamento com conta de outro proprietário', async () => {

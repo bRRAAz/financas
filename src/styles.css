@@ -261,7 +261,7 @@ h1:focus { outline: none; }
 .login { min-height: 100dvh; }
 .login-card { display: grid; width: min(100%, 390px); justify-items: center; gap: 18px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 15px; padding: 26px; }
 .login h1 { font-size: 1.2rem; font-weight: 720; color: var(--ink); }
-.google-login { width: 100%; }
+.login-form { display: grid; gap: 12px; width: 100%; }
 .login-error, .setup-message { width: 100%; text-align: left; padding: 9px; border-radius: 7px; font-size: .86rem; }
 .login-error { background: var(--red-bg); color: var(--red-ink); }
 .setup-message { background: var(--surface-muted); }
