@@ -201,6 +201,22 @@ h1:focus { outline: none; }
 .calendar-today .date-number { color: var(--accent); }
 .calendar-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 16px; margin-top: 13px; font-size: .82rem; color: var(--muted); }
 .calendar-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.calendar-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.calendar-views { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 7px; }
+.calendar-views a[aria-current] { background: var(--accent-soft); color: var(--accent); }
+.daily-statement { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.daily-statement > div + div { border-top: 1px solid var(--border); }
+.statement-opening { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--surface-muted); }
+.statement-opening dt { font-size: .88rem; font-weight: 650; }
+.statement-movements { padding: 0 14px; }
+.statement-closing { display: flex; justify-content: space-between; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border); background: var(--surface-muted); }
+.statement-closing > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.statement-closing > :last-child { justify-content: flex-end; text-align: right; }
+.statement-closing:has([aria-current="date"]) { background: var(--accent-soft); }
+.statement-closing dt { color: var(--muted); font-size: .76rem; }
+.statement-closing time { color: var(--ink); font-weight: 700; }
+.statement-opening dd, .statement-closing dd { margin: 0; font-size: .88rem; font-weight: 680; }
+.statement-opening .money, .statement-closing .money { white-space: normal; overflow-wrap: anywhere; }
 .day-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
 .day-summary > div { padding: 11px; background: var(--surface-muted); border-radius: 8px; }
 .day-summary dt { color: var(--muted); font-size: .82rem; margin-bottom: 4px; }
@@ -322,6 +338,8 @@ h1:focus { outline: none; }
   .calendar-day .money { font-size: clamp(.54rem, 2.45vw, .7rem); white-space: pre-line; overflow-wrap: anywhere; }
   .calendar-day .money-full { display: none; }
   .calendar-day .money-mobile { display: inline; }
+  .statement-opening, .statement-closing, .statement-movements { padding-inline: 8px; }
+  .statement-closing dd { font-size: .8rem; }
   .day-summary { grid-template-columns: repeat(2, minmax(0,1fr)); }
   .movement:not(.compact-list .movement) { grid-template-columns: auto minmax(0,1fr) auto; gap: 7px; }
   .movement:not(.compact-list .movement) .row-actions { grid-column: 2 / -1; justify-content: flex-start; }

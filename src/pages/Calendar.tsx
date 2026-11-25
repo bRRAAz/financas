@@ -1,15 +1,43 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { CalendarDays, Plus } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { CalendarDays, List, Plus } from 'lucide-react'
 import { useFinance } from '../lib/context'
-import { brDate, brl, endOfMonth, weekday } from '../lib/dates'
-import { daily, invoices } from '../lib/finance'
+import { brDate, brl, endOfMonth, shortDate, weekday } from '../lib/dates'
+import { daily, invoices, type DayBalance } from '../lib/finance'
 import { MovementList } from '../components/MovementList'
-import { Button, Card, Heading, Modal, Money, MonthPicker, Select } from '../components/ui'
+import { Button, Card, Empty, Heading, Modal, Money, MonthPicker, Select } from '../components/ui'
 
 const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
+function DailyStatement({ days, now, expenseLabel }: { days: DayBalance[]; now: string; expenseLabel: string }) {
+  const movementDays = days.filter(day => day.entries.length > 0)
+  if (!movementDays.length) return <Empty>Sem movimentações neste mês.</Empty>
+
+  return <div className="daily-statement">
+    <dl className="statement-opening">
+      <dt>Saldo anterior</dt>
+      <dd><Money value={movementDays[0].opening} tone /></dd>
+    </dl>
+    {movementDays.map(day => <div key={day.date}>
+      <div className="statement-movements"><MovementList items={day.entries} compact /></div>
+      <dl className="statement-closing">
+        <div>
+          <dt>{expenseLabel}</dt>
+          <dd className={day.expenses ? 'negative' : 'muted'}><Money value={day.expenses} /></dd>
+        </div>
+        <div>
+          <dt>Saldo dia <time dateTime={day.date} aria-current={day.date === now ? 'date' : undefined}>{shortDate(day.date)}</time></dt>
+          <dd><Money value={day.closing} tone /></dd>
+        </div>
+      </dl>
+    </div>)}
+  </div>
+}
+
 export function Calendar() {
   const { data, month, setMonth, now, openEntry, demo } = useFinance()
+  const [search] = useSearchParams()
+  const listView = search.get('vista') === 'lista'
   const [selected, setSelected] = useState<string | null>(null)
   const [account, setAccount] = useState('')
   const days = useMemo(() => daily(data, month, endOfMonth(month), now, account || undefined), [data, month, now, account])
@@ -21,9 +49,16 @@ export function Calendar() {
   return <>
     <Heading title="Calendário financeiro" description="Veja o saldo previsto ao final de cada dia."
       action={<MonthPicker month={month} onChange={setMonth} />} />
-    <Card title="Saldo diário" description="Selecione uma data para ver as movimentações." className="calendar-card"
-      action={<Select aria-label="Conta financeira" value={account} onChange={event => setAccount(event.target.value)}><option value="">Todas as contas</option>
-        {data.accounts.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</Select>}>
+    <Card title={listView ? 'Extrato diário' : 'Saldo diário'} description={listView ? undefined : 'Selecione uma data para ver as movimentações.'} className={listView ? undefined : 'calendar-card'}
+      action={<div className="calendar-controls">
+        <nav className="calendar-views" aria-label="Visualização do calendário">
+          <Button size="small" variant="ghost" asChild><Link to="." aria-current={!listView ? 'page' : undefined}><CalendarDays size={15} aria-hidden="true" /> Calendário</Link></Button>
+          <Button size="small" variant="ghost" asChild><Link to="?vista=lista" aria-current={listView ? 'page' : undefined}><List size={15} aria-hidden="true" /> Extrato</Link></Button>
+        </nav>
+        <Select aria-label="Conta financeira" value={account} onChange={event => setAccount(event.target.value)}><option value="">Todas as contas</option>
+          {data.accounts.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</Select>
+      </div>}>
+      {listView ? <DailyStatement days={days} now={now} expenseLabel={account ? 'Saídas do dia' : 'Gastos do dia'} /> : <>
       <div className="calendar-grid">
         {weekdays.map(label => <div key={label} className="calendar-weekday">{label}</div>)}
         {Array.from({ length: weekday(month) }, (_, index) => <div key={'empty-' + index} className="calendar-empty" />)}
@@ -38,6 +73,7 @@ export function Calendar() {
       </div>
       <div className="calendar-legend"><span><i className="legend-color legend-positive" /> Positivo</span><span><i className="legend-color legend-negative" /> Negativo</span>
         <span><i className="legend-color legend-zero" /> Zerado</span><span><CalendarDays size={15} /> Hoje</span></div>
+      </>}
     </Card>
     {active && <Modal title={brDate(active.date)} description="Movimentações e saldo projetado do dia" onClose={() => setSelected(null)} wide>
       <dl className="day-summary">
